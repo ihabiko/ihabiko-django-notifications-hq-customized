@@ -70,7 +70,6 @@ def mark_all_as_read(request):
         return redirect(_next)
     return redirect('notifications:unread')
 
-
 @login_required
 def mark_as_read(request, slug=None):
     notification_id = slug2id(slug)
