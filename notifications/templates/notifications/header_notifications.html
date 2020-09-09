@@ -19,39 +19,130 @@
         </span>
     </div>
 </li>
-{% block extrascripts %}
-    <script src="{% static 'notifications/notify.js' %}" type="text/javascript"></script>
-    <script>
-        function my_special_notification_callback(data) {
-            $(".live_notify_list").empty();
-            for (var i = 0; i < data.all_list.length; i++) {
-                var notice = data.all_list[i];
-                var notice_item = $('<a></a>');
-                if (notice.unread)
-                    notice_item.attr("class", "dropdown-item d-flex align-items-center bg-dark");
-                else
-                    notice_item.attr("class", "dropdown-item d-flex align-items-center bg-gray");
+<script src="{% static 'notifications/notify.js' %}" type="text/javascript"></script>
+<script>
+    function my_special_notification_callback(data) {
+        $(".live_notify_list").empty();
+        for (var i = 0; i < data.all_list.length; i++) {
+            var notice = data.all_list[i];
+            var notice_item = $('<a></a>');
+            if (notice.unread)
+                notice_item.attr("class", "dropdown-item d-flex align-items-center bg-dark");
+            else
+                notice_item.attr("class", "dropdown-item d-flex align-items-center bg-gray");
 
-                notice_item.attr("href", notice.verb);
-                {#notice_item.attr("href", '/notifications/mark-as-read/' + notice.slug);#}
+            notice_item.attr("href", notice.verb);
+            notice_item.attr("onclick", 'markAsRead(' + notice.slug + ')');
 
-                var notice_description = $('<span></span>');
-                if (notice.unread)
-                    notice_description.attr("class", "font-weight-bold text-white ");
+            var notice_description = $('<p></p>');
+            var notice_time = $('<span></span>');
 
-
-                notice_description.text(notice.description);
-                var notice_content = $('<div></div>').append(notice_description);
-                notice_item.append(notice_content);
-                $(".live_notify_list").append(notice_item);
-
+            if (notice.unread) {
+                notice_description.attr("class", "font-weight-bold text-white ");
+                notice_time.attr("class", "font-weight-bold text-white ");
             }
-            if (data.all_list.length === 0) {
-                $(".live_notify_list").text('no notification to show');
-            }
+
+
+            notice_description.text(notice.description);
+            notice_time.text(humanized_time_span(notice.timestamp));
+
+            var notice_content = $('<div></div>').append(notice_description);
+            notice_content = notice_content.append(notice_time)
+            notice_item.append(notice_content);
+            $(".live_notify_list").append(notice_item);
+
         }
-    </script>
-    {% register_notify_callbacks callbacks='fill_notification_badge,my_special_notification_callback' %}
+        if (data.all_list.length === 0) {
+            $(".live_notify_list").text('no notification to show');
+        }
+    }
 
+    function markAsRead(slug) {
+        $.get('/notifications/mark-as-read/' + slug, function (data) {
+        });
+    }
 
-{% endblock %}
+    function humanized_time_span(date, ref_date, date_formats, time_units) {
+        //Date Formats must be be ordered smallest -> largest and must end in a format with ceiling of null
+        date_formats = date_formats || {
+            past: [
+                {ceiling: 60, text: "$seconds seconds ago"},
+                {ceiling: 3600, text: "$minutes minutes ago"},
+                {ceiling: 86400, text: "$hours hours ago"},
+                {ceiling: 2629744, text: "$days days ago"},
+                {ceiling: 31556926, text: "$months months ago"},
+                {ceiling: null, text: "$years years ago"}
+            ],
+            future: [
+                {ceiling: 60, text: "in $seconds seconds"},
+                {ceiling: 3600, text: "in $minutes minutes"},
+                {ceiling: 86400, text: "in $hours hours"},
+                {ceiling: 2629744, text: "in $days days"},
+                {ceiling: 31556926, text: "in $months months"},
+                {ceiling: null, text: "in $years years"}
+            ]
+        };
+        //Time units must be be ordered largest -> smallest
+        time_units = time_units || [
+            [31556926, 'years'],
+            [2629744, 'months'],
+            [86400, 'days'],
+            [3600, 'hours'],
+            [60, 'minutes'],
+            [1, 'seconds']
+        ];
+
+        date = new Date(date);
+        ref_date = ref_date ? new Date(ref_date) : new Date();
+        var seconds_difference = (ref_date - date) / 1000;
+
+        var tense = 'past';
+        if (seconds_difference < 0) {
+            tense = 'future';
+            seconds_difference = 0 - seconds_difference;
+        }
+
+        function get_format() {
+            for (var i = 0; i < date_formats[tense].length; i++) {
+                if (date_formats[tense][i].ceiling == null || seconds_difference <= date_formats[tense][i].ceiling) {
+                    return date_formats[tense][i];
+                }
+            }
+            return null;
+        }
+
+        function get_time_breakdown() {
+            var seconds = seconds_difference;
+            var breakdown = {};
+            for (var i = 0; i < time_units.length; i++) {
+                var occurences_of_unit = Math.floor(seconds / time_units[i][0]);
+                seconds = seconds - (time_units[i][0] * occurences_of_unit);
+                breakdown[time_units[i][1]] = occurences_of_unit;
+            }
+            return breakdown;
+        }
+
+        function render_date(date_format) {
+            var breakdown = get_time_breakdown();
+            var time_ago_text = date_format.text.replace(/\$(\w+)/g, function () {
+                return breakdown[arguments[1]];
+            });
+            return depluralize_time_ago_text(time_ago_text, breakdown);
+        }
+
+        function depluralize_time_ago_text(time_ago_text, breakdown) {
+            for (var i in breakdown) {
+                if (breakdown[i] == 1) {
+                    var regexp = new RegExp("\\b" + i + "\\b");
+                    time_ago_text = time_ago_text.replace(regexp, function () {
+                        return arguments[0].replace(/s\b/g, '');
+                    });
+                }
+            }
+            return time_ago_text;
+        }
+
+        return render_date(get_format());
+    }
+</script>
+{% register_notify_callbacks callbacks='fill_notification_badge,my_special_notification_callback' %}
